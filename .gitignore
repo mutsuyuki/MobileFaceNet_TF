@@ -102,3 +102,13 @@ ENV/
 
 datasets
 output
+
+
+
+# 
+.idea
+@unsync
+images
+movies
+weights/*
+!pretrained
