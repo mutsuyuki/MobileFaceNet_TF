@@ -6,14 +6,6 @@ test pretrained model.
 Author: aiboy.wei@outlook.com .
 '''
 
-import sys
-
-sys.path.append("MobileFaceNet_TF")
-from verification import evaluate
-
-from common import load_validation_images_and_labels
-from common import images_to_grayscale
-
 from scipy.optimize import brentq
 from scipy import interpolate
 from sklearn import metrics
@@ -25,21 +17,25 @@ import sys
 import re
 import os
 
+# 修正版したモジュールの読みこみ
+from verification import evaluate
+from common import load_validation_images_and_labels
+from common import images_to_grayscale
 
 def parse_arguments(argv):
     # default params
 
-    # # 学習済みモデルの設定
-    # convert2grayscale = False
-    # model_path = "./weights/pretrained/"
+    # 学習済みモデルの設定
+    convert2grayscale = False
+    model_path = "./weights/pretrained/"
 
     # # グレー画像学習の設定
     # convert2grayscale = True
     # model_path = "./weights/retrained_mono/"
 
-    # カラー画像再学習の設定
-    convert2grayscale = False
-    model_path = "./weights/retrained_color_interm/"
+    # # カラー画像再学習の設定
+    # convert2grayscale = False
+    # model_path = "./weights/retrained_color_interm/"
 
     eval_data_path = "./dataset/faces_ms1m-refine-v2_112x112_converted/faces_emore/test"
     batch_size = 10 # default is 100

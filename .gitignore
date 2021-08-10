@@ -110,5 +110,4 @@ output
 @unsync
 images
 movies
-weights/*
-!pretrained
+weights

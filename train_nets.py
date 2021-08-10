@@ -5,21 +5,7 @@
 Tensorflow implementation for MobileFaceNet.
 Author: aiboy.wei@outlook.com .
 '''
-import sys
-
-sys.path.append("MobileFaceNet_TF")
-
-from losses.face_losses import insightface_loss, cosineface_loss, combine_loss
-# from utils.data_process import parse_function, load_data
-from nets.MobileFaceNet import inference
-# from losses.face_losses import cos_loss
-from verification import evaluate
-
-from common import load_validation_images_and_labels
-from common import images_to_grayscale
-
 from scipy.optimize import brentq
-from utils.common import train
 from scipy import interpolate
 from datetime import datetime
 from sklearn import metrics
@@ -29,19 +15,31 @@ import argparse
 import time
 import os
 
+# オリジナルコードの関数をインポート
+import sys
+sys.path.append("MobileFaceNet_TF")
+from losses.face_losses import insightface_loss, cosineface_loss, combine_loss
+# from utils.data_process import parse_function, load_data
+from nets.MobileFaceNet import inference
+# from losses.face_losses import cos_loss
+from utils.common import train
+sys.path.remove("MobileFaceNet_TF")
+
+# 修正版したモジュールの読みこみ
+from verification import evaluate
+from common import load_validation_images_and_labels
+from common import images_to_grayscale
+
 slim = tf.contrib.slim
 
+
 def get_parser():
-
-
     # default params
     class_number = 85742  # MS1M-V2
     train_batch_size = 10  # original is 90
     eval_data_path = "./dataset/faces_ms1m-refine-v2_112x112_converted/faces_emore/test"
     tfrecords_file_path = "./dataset/faces_ms1m-refine-v2_112x112_converted/faces_emore/train/tfrecords/train.tfrecord"
     convert2grayscale = True
-
-
 
     parser = argparse.ArgumentParser(description='parameters to train net')
     parser.add_argument('--max_epoch', default=12, help='epoch to train the network')
@@ -97,7 +95,6 @@ def get_parser():
     parser.add_argument('--convert2grayscale', type=bool,
                         help='convert train and test image to grayscale', default=convert2grayscale)
 
-
     args = parser.parse_args()
     return args
 
@@ -144,7 +141,7 @@ if __name__ == '__main__':
         tfrecords_f = args.tfrecords_file_path
         dataset = tf.data.TFRecordDataset(tfrecords_f)
         dataset = dataset.map(parse_function)
-        #dataset = dataset.shuffle(buffer_size=args.buffer_size)
+        # dataset = dataset.shuffle(buffer_size=args.buffer_size)
         dataset = dataset.batch(args.train_batch_size)
         iterator = dataset.make_initializable_iterator()
         next_element = iterator.get_next()
@@ -174,7 +171,8 @@ if __name__ == '__main__':
         # identity the input, for inference
         inputs = tf.identity(inputs, 'input')
 
-        prelogits, net_points = inference(inputs, bottleneck_layer_size=args.embedding_size, phase_train=phase_train_placeholder, weight_decay=args.weight_decay)
+        prelogits, net_points = inference(inputs, bottleneck_layer_size=args.embedding_size, phase_train=phase_train_placeholder,
+                                          weight_decay=args.weight_decay)
 
         # record the network architecture
         hd = open("./MobileFaceNet_TF/arch/txt/MobileFaceNet_Arch.txt", 'w')
@@ -208,7 +206,7 @@ if __name__ == '__main__':
 
         # define the learning rate schedule
         learning_rate = tf.train.piecewise_constant(epoch, boundaries=args.lr_schedule, values=[0.1, 0.01, 0.001, 0.0001, 0.00001],
-                                         name='lr_schedule')
+                                                    name='lr_schedule')
 
         # define sess
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.9)
@@ -280,16 +278,17 @@ if __name__ == '__main__':
                     feed_dict = {inputs: images_train, labels: labels_train, phase_train_placeholder: True}
                     start = time.time()
                     _, total_loss_val, inference_loss_val, reg_loss_val, _, acc_val = \
-                    sess.run([train_op, total_loss, inference_loss, regularization_losses, inc_global_step_op, Accuracy_Op],
-                             feed_dict=feed_dict)
+                        sess.run([train_op, total_loss, inference_loss, regularization_losses, inc_global_step_op, Accuracy_Op],
+                                 feed_dict=feed_dict)
                     end = time.time()
-                    pre_sec = args.train_batch_size/(end - start)
+                    pre_sec = args.train_batch_size / (end - start)
 
                     count += 1
                     # print training information
                     if count > 0 and count % args.show_info_interval == 0:
-                        print('epoch %d, total_step %d, total loss is %.2f , inference loss is %.2f, reg_loss is %.2f, training accuracy is %.6f, time %.3f samples/sec' %
-                              (i, count, total_loss_val, inference_loss_val, np.sum(reg_loss_val), acc_val, pre_sec))
+                        print(
+                            'epoch %d, total_step %d, total loss is %.2f , inference loss is %.2f, reg_loss is %.2f, training accuracy is %.6f, time %.3f samples/sec' %
+                            (i, count, total_loss_val, inference_loss_val, np.sum(reg_loss_val), acc_val, pre_sec))
 
                     # save summary
                     if count > 0 and count % args.summary_interval == 0:
@@ -311,7 +310,7 @@ if __name__ == '__main__':
                             data_sets, issame_list = ver_list[db_index]
                             emb_array = np.zeros((data_sets.shape[0], args.embedding_size))
                             nrof_batches = data_sets.shape[0] // args.test_batch_size
-                            for index in range(nrof_batches): # actual is same multiply 2, test data total
+                            for index in range(nrof_batches):  # actual is same multiply 2, test data total
                                 start_index = index * args.test_batch_size
                                 end_index = min((index + 1) * args.test_batch_size, data_sets.shape[0])
 
