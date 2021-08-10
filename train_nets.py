@@ -5,12 +5,19 @@
 Tensorflow implementation for MobileFaceNet.
 Author: aiboy.wei@outlook.com .
 '''
+import sys
+
+sys.path.append("MobileFaceNet_TF")
 
 from losses.face_losses import insightface_loss, cosineface_loss, combine_loss
-from utils.data_process import parse_function, load_data
+# from utils.data_process import parse_function, load_data
 from nets.MobileFaceNet import inference
 # from losses.face_losses import cos_loss
 from verification import evaluate
+
+from common import load_validation_images_and_labels
+from common import images_to_grayscale
+
 from scipy.optimize import brentq
 from utils.common import train
 from scipy import interpolate
@@ -25,31 +32,43 @@ import os
 slim = tf.contrib.slim
 
 def get_parser():
+
+
+    # default params
+    class_number = 85742  # MS1M-V2
+    train_batch_size = 10  # original is 90
+    eval_data_path = "./dataset/faces_ms1m-refine-v2_112x112_converted/faces_emore/test"
+    tfrecords_file_path = "./dataset/faces_ms1m-refine-v2_112x112_converted/faces_emore/train/tfrecords/train.tfrecord"
+    convert2grayscale = True
+
+
+
     parser = argparse.ArgumentParser(description='parameters to train net')
     parser.add_argument('--max_epoch', default=12, help='epoch to train the network')
     parser.add_argument('--image_size', default=[112, 112], help='the image size')
-    parser.add_argument('--class_number', type=int, required=True,
+    parser.add_argument('--class_number', default=class_number, type=int,
                         help='class number depend on your training datasets, MS1M-V1: 85164, MS1M-V2: 85742')
     parser.add_argument('--embedding_size', type=int,
                         help='Dimensionality of the embedding.', default=128)
     parser.add_argument('--weight_decay', default=5e-5, help='L2 weight regularization.')
     parser.add_argument('--lr_schedule', help='Number of epochs for learning rate piecewise.', default=[4, 7, 9, 11])
-    parser.add_argument('--train_batch_size', default=90, help='batch size to train network')
+    parser.add_argument('--train_batch_size', type=int, default=train_batch_size, help='batch size to train network')
     parser.add_argument('--test_batch_size', type=int,
                         help='Number of images to process in a batch in the test set.', default=100)
-    parser.add_argument('--eval_datasets', default=['lfw', 'cfp_ff', 'cfp_fp', 'agedb_30'], help='evluation datasets')
+    parser.add_argument('--eval_datasets', default=['lfw'], help='evluation datasets')
     # parser.add_argument('--eval_datasets', default=['lfw'], help='evluation datasets')
-    parser.add_argument('--eval_db_path', default='./datasets/faces_ms1m_112x112', help='evluate datasets base path')
+    parser.add_argument('--eval_data_path', default=eval_data_path,
+                        help='evluate datasets base path')
     parser.add_argument('--eval_nrof_folds', type=int,
                         help='Number of folds to use for cross validation. Mainly used for testing.', default=10)
-    parser.add_argument('--tfrecords_file_path', default='./datasets/faces_ms1m_112x112/tfrecords', type=str,
+    parser.add_argument('--tfrecords_file_path', default=tfrecords_file_path, type=str,
                         help='path to the output of tfrecords file path')
     parser.add_argument('--summary_path', default='./output/summary', help='the summary file save path')
     parser.add_argument('--ckpt_path', default='./output/ckpt', help='the ckpt file save path')
     parser.add_argument('--ckpt_best_path', default='./output/ckpt_best', help='the best ckpt file save path')
     parser.add_argument('--log_file_path', default='./output/logs', help='the ckpt file save path')
     parser.add_argument('--saver_maxkeep', default=50, help='tf.train.Saver max keep ckpt files')
-    #parser.add_argument('--buffer_size', default=10000, help='tf dataset api buffer size')
+    # parser.add_argument('--buffer_size', default=10000, help='tf dataset api buffer size')
     parser.add_argument('--summary_interval', default=400, help='interval to save summary')
     parser.add_argument('--ckpt_interval', default=2000, help='intervals to save ckpt file')
     parser.add_argument('--validate_interval', default=2000, help='intervals to save ckpt file')
@@ -75,9 +94,30 @@ def get_parser():
                         help='combine_loss loss margin a.', default=1.0)
     parser.add_argument('--margin_b', type=float,
                         help='combine_loss loss margin b.', default=0.2)
+    parser.add_argument('--convert2grayscale', type=bool,
+                        help='convert train and test image to grayscale', default=convert2grayscale)
+
 
     args = parser.parse_args()
     return args
+
+
+def parse_function(example_proto):
+    features = {'image_raw': tf.FixedLenFeature([], tf.string),
+                'label': tf.FixedLenFeature([], tf.int64)}
+    features = tf.parse_single_example(example_proto, features)
+    # You can do more image distortion here for training data
+    img = tf.image.decode_jpeg(features['image_raw'])
+    img = tf.reshape(img, shape=(112, 112, 3))
+
+    # img = tf.py_func(random_rotate_image, [img], tf.uint8)
+    img = tf.cast(img, dtype=tf.float32)
+    img = tf.subtract(img, 127.5)
+    img = tf.multiply(img, 0.0078125)
+    img = tf.image.random_flip_left_right(img)
+    label = tf.cast(features['label'], tf.int64)
+    return img, label
+
 
 if __name__ == '__main__':
     with tf.Graph().as_default():
@@ -101,7 +141,7 @@ if __name__ == '__main__':
         # prepare train dataset
         # the image is substracted 127.5 and multiplied 1/128.
         # random flip left right
-        tfrecords_f = os.path.join(args.tfrecords_file_path, 'tran.tfrecords')
+        tfrecords_f = args.tfrecords_file_path
         dataset = tf.data.TFRecordDataset(tfrecords_f)
         dataset = dataset.map(parse_function)
         #dataset = dataset.shuffle(buffer_size=args.buffer_size)
@@ -112,11 +152,18 @@ if __name__ == '__main__':
         # prepare validate datasets
         ver_list = []
         ver_name_list = []
-        for db in args.eval_datasets:
-            print('begin db %s convert.' % db)
-            data_set = load_data(db, args.image_size, args)
+        for dataset_type in args.eval_datasets:
+            print(f"begin convert {dataset_type} in {args.eval_data_path}")
+
+            # add to list
+            data_set = load_validation_images_and_labels(args.eval_data_path, dataset_type)
             ver_list.append(data_set)
-            ver_name_list.append(db)
+            ver_name_list.append(dataset_type)
+
+        if args.convert2grayscale:
+            print("------ grayscale mode -------")
+            for i in range(len(ver_list)):
+                ver_list[i] = (images_to_grayscale(ver_list[i][0]), ver_list[i][1])
 
         # pretrained model path
         pretrained_model = None
@@ -130,7 +177,7 @@ if __name__ == '__main__':
         prelogits, net_points = inference(inputs, bottleneck_layer_size=args.embedding_size, phase_train=phase_train_placeholder, weight_decay=args.weight_decay)
 
         # record the network architecture
-        hd = open("./arch/txt/MobileFaceNet_Arch.txt", 'w')
+        hd = open("./MobileFaceNet_TF/arch/txt/MobileFaceNet_Arch.txt", 'w')
         for key in net_points.keys():
             info = '{}:{}\n'.format(key, net_points[key].get_shape().as_list())
             hd.write(info)
@@ -162,7 +209,7 @@ if __name__ == '__main__':
         # define the learning rate schedule
         learning_rate = tf.train.piecewise_constant(epoch, boundaries=args.lr_schedule, values=[0.1, 0.01, 0.001, 0.0001, 0.00001],
                                          name='lr_schedule')
-        
+
         # define sess
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.9)
         config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=args.log_device_mapping, gpu_options=gpu_options)
@@ -190,7 +237,7 @@ if __name__ == '__main__':
         inc_epoch_op = tf.assign_add(epoch, 1, name='increment_epoch')
 
         # record trainable variable
-        hd = open("./arch/txt/trainable_var.txt", "w")
+        hd = open("./MobileFaceNet_TF/arch/txt/trainable_var.txt", "w")
         for var in tf.trainable_variables():
             hd.write(str(var))
             hd.write('\n')
@@ -219,12 +266,16 @@ if __name__ == '__main__':
 
         count = 0
         total_accuracy = {}
+        prev_global_step = 0
         for i in range(args.max_epoch):
             sess.run(iterator.initializer)
             _ = sess.run(inc_epoch_op)
             while True:
                 try:
-                    images_train, labels_train = sess.run(next_element)
+                    images_train, labels_train = sess.run(next_element)  # imageはRGBで格納されている
+
+                    if args.convert2grayscale:
+                        images_train = images_to_grayscale(images_train)
 
                     feed_dict = {inputs: images_train, labels: labels_train, phase_train_placeholder: True}
                     start = time.time()

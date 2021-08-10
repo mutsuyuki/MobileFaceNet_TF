@@ -85,7 +85,7 @@ def calculate_roc(thresholds, embeddings1, embeddings2, actual_issame, nrof_fold
                                                                                                  actual_issame[
                                                                                                      test_set])
         _, _, accuracy[fold_idx] = calculate_accuracy(thresholds[best_threshold_index], dist[test_set],
-                                                      actual_issame[test_set])
+                                                      actual_issame[test_set], is_show_log=True, fold_idx=fold_idx)
 
         if max_threshold < thresholds[best_threshold_index]:
             max_threshold = thresholds[best_threshold_index]
@@ -98,7 +98,7 @@ def calculate_roc(thresholds, embeddings1, embeddings2, actual_issame, nrof_fold
     return tpr, fpr, accuracy
 
 
-def calculate_accuracy(threshold, dist, actual_issame):
+def calculate_accuracy(threshold, dist, actual_issame, is_show_log=False, fold_idx="none"):
     predict_issame = np.less(dist, threshold)
     tp = np.sum(np.logical_and(predict_issame, actual_issame))
     fp = np.sum(np.logical_and(predict_issame, np.logical_not(actual_issame)))
@@ -108,8 +108,39 @@ def calculate_accuracy(threshold, dist, actual_issame):
     tpr = 0 if (tp + fn == 0) else float(tp) / float(tp + fn)
     fpr = 0 if (fp + tn == 0) else float(fp) / float(fp + tn)
     acc = float(tp + tn) / dist.size
-    return tpr, fpr, acc
 
+    # if is_show_log:
+    # print("")
+    # print("----", threshold, "fold_idx:", fold_idx, "-------------------------------------------------")
+    # for i in range(len(predict_issame)):
+    # 距離分布出力
+    # print(fold_idx * len(predict_issame) + i, dist[i], actual_issame[i])
+
+    # # ミスのケース表示
+    # if predict_issame[i] != actual_issame[i]:
+    #     print("diff", (i + fold_idx * 600) * 2, "vs", (i + fold_idx * 600) * 2 + 1, "label:", i + fold_idx * 600, "actual:", actual_issame[i], "predict:", predict_issame[i], "distance:", dist[i])
+
+    # # 正解で遠めを検出
+    # if predict_issame[i] == actual_issame[i] and dist[i] > 1.15 and dist[i] < 1.3:
+    #     print("same far", (i + fold_idx * 600) * 2, "vs", (i + fold_idx * 600) * 2 + 1, "label:", i + fold_idx * 600, "actual:", actual_issame[i], "predict:", predict_issame[i], "distance:", dist[i])
+
+    # # 正解で近めを検出
+    # if predict_issame[i] == actual_issame[i] and ((dist[i] > 0.3 and dist[i] < 0.35) or (dist[i] > 2.3 and dist[1] < 2.35)):
+    #     print("same near", (i + fold_idx * 600) * 2, "vs", (i + fold_idx * 600) * 2 + 1, "label:", i + fold_idx * 600, "actual:", actual_issame[i], "predict:", predict_issame[i], "distance:", dist[i])
+
+    # print("TP:", tp, "FP:", fp, "TN:", tn, "FN:", fn)
+    # accuracy = (tp + tn) / (tp + fp + tn + fn)
+    # precision = tp / (tp + fp)
+    # recall = tp / (tp + fn)
+    # specificity = tn / (fp + tn)
+    # f_measure = (2 * recall * precision) / (recall + precision)
+    # print("accuracy:", accuracy)
+    # print("precision:", precision)
+    # print("recall:", recall)
+    # print("specificity:", specificity)
+    # print("f-measure:", f_measure)
+
+    return tpr, fpr, acc
 
 def calculate_val(thresholds, embeddings1, embeddings2, actual_issame, far_target, nrof_folds=10):
     '''
